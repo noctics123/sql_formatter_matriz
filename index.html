@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Formateador SQL: Vertical a Horizontal</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -75,6 +76,138 @@
             font-size: 14px;
         }
 
+        /* Estilos para la zona de carga de archivos */
+        .file-upload-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 2px dashed #dee2e6;
+            transition: all 0.3s ease;
+        }
+
+        .file-upload-section.dragover {
+            border-color: #4facfe;
+            background: rgba(79, 172, 254, 0.1);
+            transform: scale(1.02);
+        }
+
+        .upload-area {
+            text-align: center;
+            padding: 30px;
+            cursor: pointer;
+        }
+
+        .upload-area:hover {
+            background: rgba(79, 172, 254, 0.05);
+            border-radius: 8px;
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            color: #4facfe;
+        }
+
+        .upload-text h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.2rem;
+        }
+
+        .upload-text p {
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .upload-btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .upload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(79, 172, 254, 0.3);
+        }
+
+        .file-info {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .file-details {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: #155724;
+        }
+
+        .file-size {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        .remove-file {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .remove-file:hover {
+            background: #c82333;
+            transform: scale(1.1);
+        }
+
+        .divider {
+            text-align: center;
+            margin: 25px 0;
+            position: relative;
+        }
+
+        .divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(to right, transparent, #ddd, transparent);
+        }
+
+        .divider span {
+            background: white;
+            padding: 0 20px;
+            color: #666;
+            font-size: 0.9rem;
+            font-style: italic;
+        }
+
         textarea {
             width: 100%;
             min-height: 300px;
@@ -135,6 +268,32 @@
         .btn-secondary:hover {
             background: #5a6268;
             transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .btn-warning:hover {
+            background: #e0a800;
+            transform: translateY(-2px);
+        }
+
+        .export-buttons {
+            display: none;
+            gap: 10px;
+            flex-wrap: wrap;
         }
 
         .settings {
@@ -264,11 +423,43 @@
     <div class="container">
         <div class="header">
             <h1>🔄 Formateador SQL</h1>
-            <p>Convierte consultas SQL verticales a formato horizontal con límite de caracteres</p>
+            <p>Convierte consultas SQL verticales a formato horizontal con exportación múltiple</p>
         </div>
 
         <div class="main-content">
             <div class="input-section">
+                <div class="section-title">
+                    <div class="icon">📁</div>
+                    Cargar Archivo SQL/TXT
+                </div>
+
+                <div class="file-upload-section" id="fileUploadSection">
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon">📄</div>
+                        <div class="upload-text">
+                            <h3>Arrastra tu archivo aquí</h3>
+                            <p>Formatos soportados: .sql, .txt (Máximo 50MB)</p>
+                            <button class="upload-btn" onclick="selectFile()">
+                                📂 Seleccionar Archivo
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <input type="file" id="fileInput" class="file-input" accept=".sql,.txt" onchange="handleFileSelect(event)">
+                    
+                    <div class="file-info" id="fileInfo">
+                        <div class="file-details">
+                            <span class="file-name" id="fileName"></span>
+                            <span class="file-size" id="fileSize"></span>
+                        </div>
+                        <button class="remove-file" onclick="removeFile()" title="Remover archivo">✕</button>
+                    </div>
+                </div>
+
+                <div class="divider">
+                    <span>O escribe/pega tu consulta manualmente</span>
+                </div>
+
                 <div class="section-title">
                     <div class="icon">📝</div>
                     Consulta SQL Original (Formato Vertical)
@@ -301,10 +492,26 @@ GROUP BY campo1, campo2"></textarea>
                     🗑️ Limpiar Todo
                 </button>
 
+                <div class="export-buttons" id="exportButtons">
+                    <button class="btn btn-success" onclick="copyToClipboard()">
+                        📋 Copiar
+                    </button>
+                    <button class="btn btn-success" onclick="downloadTXT()">
+                        💾 Descargar .TXT
+                    </button>
+                    <button class="btn btn-warning" onclick="downloadExcel()">
+                        📊 Descargar .XLSX
+                    </button>
+                </div>
+
                 <div class="settings">
                     <div class="setting-group">
                         <label for="maxChars">Máx caracteres por línea:</label>
                         <input type="number" id="maxChars" value="32000" min="100" max="50000">
+                    </div>
+                    <div class="setting-group">
+                        <label for="excelMaxChars">Máx caracteres Excel:</label>
+                        <input type="number" id="excelMaxChars" value="32767" min="100" max="32767" title="Límite máximo de Excel por celda">
                     </div>
                     <div class="setting-group">
                         <label for="indentSize">Indentación:</label>
@@ -349,6 +556,7 @@ GROUP BY campo1, campo2"></textarea>
         class SQLFormatter {
             constructor() {
                 this.maxCharsPerLine = 32000;
+                this.excelMaxChars = 32767;
                 this.indentSize = 4;
                 this.keywords = [
                     'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'HAVING', 'ORDER BY', 
@@ -357,8 +565,10 @@ GROUP BY campo1, campo2"></textarea>
                 ];
             }
 
-            formatSQL(query) {
+            formatSQL(query, isForExcel = false) {
                 try {
+                    const maxChars = isForExcel ? this.excelMaxChars : this.maxCharsPerLine;
+                    
                     // Limpiar y normalizar la query
                     let cleanQuery = this.cleanQuery(query);
                     
@@ -372,14 +582,14 @@ GROUP BY campo1, campo2"></textarea>
                     // Procesar cada bloque SELECT
                     let formattedQuery = cleanQuery;
                     for (let block of selectBlocks) {
-                        let formattedBlock = this.formatSelectBlock(block);
+                        let formattedBlock = this.formatSelectBlock(block, maxChars);
                         formattedQuery = formattedQuery.replace(block.original, formattedBlock);
                     }
 
                     return {
                         success: true,
                         query: formattedQuery,
-                        stats: this.calculateStats(selectBlocks, formattedQuery)
+                        stats: this.calculateStats(selectBlocks, formattedQuery, maxChars)
                     };
 
                 } catch (error) {
@@ -436,14 +646,14 @@ GROUP BY campo1, campo2"></textarea>
                 return blocks;
             }
 
-            formatSelectBlock(block) {
+            formatSelectBlock(block, maxChars) {
                 let fields = this.extractFields(block.content);
                 
                 if (fields.length === 0) {
                     return block.original;
                 }
 
-                let formattedFields = this.formatFields(fields);
+                let formattedFields = this.formatFields(fields, maxChars);
                 let selectKeyword = block.isSubquery ? '(SELECT' : 'SELECT';
                 
                 return selectKeyword + '\n' + formattedFields;
@@ -497,7 +707,7 @@ GROUP BY campo1, campo2"></textarea>
                 return fields;
             }
 
-            formatFields(fields) {
+            formatFields(fields, maxChars) {
                 let lines = [];
                 let currentLine = '';
                 let indent = ' '.repeat(this.indentSize);
@@ -510,7 +720,7 @@ GROUP BY campo1, campo2"></textarea>
                     // Verificar si el campo cabe en la línea actual
                     let testLine = currentLine ? currentLine + ' ' + fieldWithComma : indent + fieldWithComma;
 
-                    if (testLine.length <= this.maxCharsPerLine) {
+                    if (testLine.length <= maxChars) {
                         currentLine = testLine;
                     } else {
                         // La línea actual está llena, guardarla y empezar nueva
@@ -529,7 +739,7 @@ GROUP BY campo1, campo2"></textarea>
                 return lines.join('\n');
             }
 
-            calculateStats(blocks, formattedQuery) {
+            calculateStats(blocks, formattedQuery, maxChars) {
                 let totalFields = 0;
                 for (let block of blocks) {
                     totalFields += this.extractFields(block.content).length;
@@ -546,38 +756,207 @@ GROUP BY campo1, campo2"></textarea>
                     fieldCount: totalFields,
                     lineCount: formattedLines,
                     charCount: formattedQuery.length,
-                    reductionPercent: Math.max(0, reduction)
+                    reductionPercent: Math.max(0, reduction),
+                    maxCharsUsed: maxChars
                 };
+            }
+
+            // Preparar datos para Excel con manejo de límites por celda
+            prepareForExcel(query) {
+                const result = this.formatSQL(query, true);
+                if (!result.success) return result;
+
+                const lines = result.query.split('\n');
+                const excelData = [];
+                
+                lines.forEach((line, index) => {
+                    if (line.trim()) {
+                        // Si la línea excede el límite de Excel, dividirla
+                        if (line.length > this.excelMaxChars) {
+                            const chunks = this.splitLineForExcel(line);
+                            chunks.forEach(chunk => {
+                                excelData.push([chunk]);
+                            });
+                        } else {
+                            excelData.push([line]);
+                        }
+                    }
+                });
+
+                return {
+                    success: true,
+                    data: excelData,
+                    stats: result.stats
+                };
+            }
+
+            splitLineForExcel(line) {
+                const chunks = [];
+                let currentChunk = '';
+                const words = line.split(' ');
+                
+                for (const word of words) {
+                    const testChunk = currentChunk ? currentChunk + ' ' + word : word;
+                    
+                    if (testChunk.length <= this.excelMaxChars) {
+                        currentChunk = testChunk;
+                    } else {
+                        if (currentChunk) {
+                            chunks.push(currentChunk);
+                        }
+                        currentChunk = word;
+                    }
+                }
+                
+                if (currentChunk) {
+                    chunks.push(currentChunk);
+                }
+                
+                return chunks;
             }
         }
 
         const formatter = new SQLFormatter();
+        let currentFile = null;
+        let formattedResult = null;
+
+        // Inicialización
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeFileHandling();
+        });
+
+        function initializeFileHandling() {
+            const fileUploadSection = document.getElementById('fileUploadSection');
+            const uploadArea = document.getElementById('uploadArea');
+            const fileInput = document.getElementById('fileInput');
+
+            // Drag and drop events
+            fileUploadSection.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                fileUploadSection.classList.add('dragover');
+            });
+
+            fileUploadSection.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                fileUploadSection.classList.remove('dragover');
+            });
+
+            fileUploadSection.addEventListener('drop', (e) => {
+                e.preventDefault();
+                fileUploadSection.classList.remove('dragover');
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFile(files[0]);
+                }
+            });
+
+            // Click to select file
+            uploadArea.addEventListener('click', selectFile);
+        }
+
+        function selectFile() {
+            document.getElementById('fileInput').click();
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        }
+
+        function handleFile(file) {
+            // Validar tipo de archivo
+            const validExtensions = ['.sql', '.txt'];
+            const fileName = file.name.toLowerCase();
+            const isValidFile = validExtensions.some(ext => fileName.endsWith(ext));
+
+            if (!isValidFile) {
+                showMessage('Por favor selecciona un archivo .sql o .txt', 'warning');
+                return;
+            }
+
+            // Validar tamaño (máximo 50MB)
+            const maxSize = 50 * 1024 * 1024; // 50MB
+            if (file.size > maxSize) {
+                showMessage('El archivo es demasiado grande. Máximo 50MB permitido.', 'warning');
+                return;
+            }
+
+            currentFile = file;
+            showFileInfo(file);
+            readFile(file);
+        }
+
+        function readFile(file) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                const content = e.target.result;
+                document.getElementById('inputQuery').value = content;
+                autoResize(document.getElementById('inputQuery'));
+                showMessage(`Archivo "${file.name}" cargado exitosamente (${formatFileSize(file.size)})`, 'success');
+            };
+
+            reader.onerror = function() {
+                showMessage('Error al leer el archivo. Intenta nuevamente.', 'warning');
+            };
+
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        function showFileInfo(file) {
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = formatFileSize(file.size);
+            document.getElementById('fileInfo').style.display = 'flex';
+        }
+
+        function removeFile() {
+            currentFile = null;
+            document.getElementById('fileInput').value = '';
+            document.getElementById('fileInfo').style.display = 'none';
+            showMessage('Archivo removido.', 'success');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
 
         function formatQuery() {
             const inputQuery = document.getElementById('inputQuery').value.trim();
             const maxChars = parseInt(document.getElementById('maxChars').value);
+            const excelMaxChars = parseInt(document.getElementById('excelMaxChars').value);
             const indentSize = parseInt(document.getElementById('indentSize').value);
 
             if (!inputQuery) {
-                showMessage('Por favor, ingresa una consulta SQL.', 'warning');
+                showMessage('Por favor, ingresa una consulta SQL o carga un archivo.', 'warning');
                 return;
             }
 
             // Actualizar configuración
             formatter.maxCharsPerLine = maxChars;
+            formatter.excelMaxChars = excelMaxChars;
             formatter.indentSize = indentSize;
 
             // Formatear la consulta
             const result = formatter.formatSQL(inputQuery);
 
             if (result.success) {
+                formattedResult = result;
                 document.getElementById('outputQuery').value = result.query;
                 updateStats(result.stats);
                 showMessage('¡Consulta formateada exitosamente!', 'success');
+                document.getElementById('exportButtons').style.display = 'flex';
             } else {
                 showMessage('Error al formatear: ' + result.error, 'warning');
                 document.getElementById('outputQuery').value = '';
                 hideStats();
+                document.getElementById('exportButtons').style.display = 'none';
             }
         }
 
@@ -620,8 +999,107 @@ GROUP BY campo1, campo2"></textarea>
         function clearAll() {
             document.getElementById('inputQuery').value = '';
             document.getElementById('outputQuery').value = '';
+            removeFile();
             hideStats();
+            document.getElementById('exportButtons').style.display = 'none';
+            formattedResult = null;
             showMessage('Contenido limpiado.', 'success');
+        }
+
+        // Funciones de exportación
+        function copyToClipboard() {
+            const outputQuery = document.getElementById('outputQuery').value;
+            if (!outputQuery.trim()) {
+                showMessage('No hay contenido para copiar.', 'warning');
+                return;
+            }
+
+            navigator.clipboard.writeText(outputQuery).then(() => {
+                showMessage('¡Contenido copiado al portapapeles!', 'success');
+            }).catch(() => {
+                // Fallback para navegadores más antiguos
+                const textarea = document.getElementById('outputQuery');
+                textarea.select();
+                document.execCommand('copy');
+                showMessage('¡Contenido copiado al portapapeles!', 'success');
+            });
+        }
+
+        function downloadTXT() {
+            const outputQuery = document.getElementById('outputQuery').value;
+            if (!outputQuery.trim()) {
+                showMessage('No hay contenido para descargar.', 'warning');
+                return;
+            }
+
+            // Generar nombre de archivo
+            let fileName = 'query_formateada';
+            if (currentFile) {
+                fileName = currentFile.name.replace(/\.[^/.]+$/, '') + '_formateada';
+            }
+            fileName += '.txt';
+
+            // Crear y descargar archivo
+            const blob = new Blob([outputQuery], { type: 'text/plain;charset=utf-8' });
+            downloadBlob(blob, fileName);
+
+            showMessage(`Archivo "${fileName}" descargado exitosamente.`, 'success');
+        }
+
+        function downloadExcel() {
+            const inputQuery = document.getElementById('inputQuery').value.trim();
+            if (!inputQuery) {
+                showMessage('No hay contenido para exportar a Excel.', 'warning');
+                return;
+            }
+
+            // Preparar datos para Excel
+            const excelResult = formatter.prepareForExcel(inputQuery);
+            if (!excelResult.success) {
+                showMessage('Error al preparar datos para Excel: ' + excelResult.error, 'warning');
+                return;
+            }
+
+            try {
+                // Crear workbook
+                const wb = XLSX.utils.book_new();
+                
+                // Crear worksheet
+                const ws = XLSX.utils.aoa_to_sheet(excelResult.data);
+                
+                // Ajustar ancho de columnas
+                const colWidths = [{ width: 150 }]; // Ancho generoso para las consultas
+                ws['!cols'] = colWidths;
+                
+                // Agregar worksheet al workbook
+                XLSX.utils.book_append_sheet(wb, ws, "Query Formateada");
+                
+                // Generar nombre de archivo
+                let fileName = 'query_formateada';
+                if (currentFile) {
+                    fileName = currentFile.name.replace(/\.[^/.]+$/, '') + '_formateada';
+                }
+                fileName += '.xlsx';
+                
+                // Descargar archivo
+                XLSX.writeFile(wb, fileName);
+                
+                showMessage(`Archivo Excel "${fileName}" descargado exitosamente.`, 'success');
+                
+            } catch (error) {
+                showMessage('Error al generar archivo Excel: ' + error.message, 'warning');
+            }
+        }
+
+        function downloadBlob(blob, fileName) {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
         }
 
         function loadExample(exampleNumber) {
@@ -677,6 +1155,7 @@ WHERE fecha_creacion >= '2024-01-01'`
 
             if (examples[exampleNumber]) {
                 document.getElementById('inputQuery').value = examples[exampleNumber];
+                autoResize(document.getElementById('inputQuery'));
                 showMessage(`Ejemplo ${exampleNumber} cargado.`, 'success');
             }
         }
@@ -701,11 +1180,6 @@ WHERE fecha_creacion >= '2024-01-01'`
                 e.preventDefault();
                 formatQuery();
             }
-        });
-
-        // Inicializar manejo de archivos cuando la página cargue
-        document.addEventListener('DOMContentLoaded', function() {
-            initFileHandling();
         });
     </script>
 </body>

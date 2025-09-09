@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Formateador SQL: Vertical a Horizontal</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Módulos SQL Formatter -->
+    <script src="js/SQLParser.js"></script>
+    <script src="js/FieldFormatter.js"></script>
+    <script src="js/QueryBuilder.js"></script>
+    <script src="js/SQLFormatter.js"></script>
     <style>
         * {
             margin: 0;
@@ -553,272 +558,32 @@ GROUP BY campo1, campo2"></textarea>
     </div>
 
     <script>
-        class SQLFormatter {
-            constructor() {
-                this.maxCharsPerLine = 32000;
-                this.excelMaxChars = 32767;
-                this.indentSize = 4;
-                this.keywords = [
-                    'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'HAVING', 'ORDER BY', 
-                    'LIMIT', 'OFFSET', 'UNION', 'INTERSECT', 'EXCEPT', 'WITH',
-                    'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP'
-                ];
-            }
+        // Configuración global mejorada
+        const appConfig = {
+            version: '2.0.0',
+            enableDiagnostics: false, // Cambiar a true para debugging
+            enableOptimization: true
+        };
 
-            formatSQL(query, isForExcel = false) {
-                try {
-                    const maxChars = isForExcel ? this.excelMaxChars : this.maxCharsPerLine;
-                    
-                    // Limpiar y normalizar la query
-                    let cleanQuery = this.cleanQuery(query);
-                    
-                    // Identificar todos los bloques SELECT
-                    let selectBlocks = this.extractSelectBlocks(cleanQuery);
-                    
-                    if (selectBlocks.length === 0) {
-                        throw new Error('No se encontraron bloques SELECT válidos');
-                    }
-
-                    // Procesar cada bloque SELECT
-                    let formattedQuery = cleanQuery;
-                    for (let block of selectBlocks) {
-                        let formattedBlock = this.formatSelectBlock(block, maxChars);
-                        formattedQuery = formattedQuery.replace(block.original, formattedBlock);
-                    }
-
-                    return {
-                        success: true,
-                        query: formattedQuery,
-                        stats: this.calculateStats(selectBlocks, formattedQuery, maxChars)
-                    };
-
-                } catch (error) {
-                    return {
-                        success: false,
-                        error: error.message
-                    };
-                }
-            }
-
-            cleanQuery(query) {
-                // Remover comentarios de línea
-                query = query.replace(/--.*$/gm, '');
-                
-                // Remover comentarios de bloque
-                query = query.replace(/\/\*[\s\S]*?\*\//g, '');
-                
-                // Normalizar espacios
-                query = query.replace(/\s+/g, ' ').trim();
-                
-                return query;
-            }
-
-            extractSelectBlocks(query) {
-                let blocks = [];
-                let regex = /SELECT\s+([\s\S]*?)(?=\s+FROM|\s+$)/gi;
-                let match;
-
-                while ((match = regex.exec(query)) !== null) {
-                    let selectContent = match[1].trim();
-                    if (selectContent) {
-                        blocks.push({
-                            original: match[0],
-                            content: selectContent,
-                            startIndex: match.index
-                        });
-                    }
-                }
-
-                // También buscar subconsultas
-                let subqueryRegex = /\(\s*SELECT\s+([\s\S]*?)(?=\s+FROM[^)]*\))/gi;
-                while ((match = subqueryRegex.exec(query)) !== null) {
-                    let selectContent = match[1].trim();
-                    if (selectContent) {
-                        blocks.push({
-                            original: match[0],
-                            content: selectContent,
-                            startIndex: match.index,
-                            isSubquery: true
-                        });
-                    }
-                }
-
-                return blocks;
-            }
-
-            formatSelectBlock(block, maxChars) {
-                let fields = this.extractFields(block.content);
-                
-                if (fields.length === 0) {
-                    return block.original;
-                }
-
-                let formattedFields = this.formatFields(fields, maxChars);
-                let selectKeyword = block.isSubquery ? '(SELECT' : 'SELECT';
-                
-                return selectKeyword + '\n' + formattedFields;
-            }
-
-            extractFields(content) {
-                let fields = [];
-                let currentField = '';
-                let parenthesesCount = 0;
-                let inQuotes = false;
-                let quoteChar = '';
-
-                for (let i = 0; i < content.length; i++) {
-                    let char = content[i];
-                    let prevChar = i > 0 ? content[i - 1] : '';
-
-                    // Manejo de comillas
-                    if ((char === '"' || char === "'") && prevChar !== '\\') {
-                        if (!inQuotes) {
-                            inQuotes = true;
-                            quoteChar = char;
-                        } else if (char === quoteChar) {
-                            inQuotes = false;
-                            quoteChar = '';
-                        }
-                    }
-
-                    if (!inQuotes) {
-                        if (char === '(') {
-                            parenthesesCount++;
-                        } else if (char === ')') {
-                            parenthesesCount--;
-                        } else if (char === ',' && parenthesesCount === 0) {
-                            // Fin del campo actual
-                            if (currentField.trim()) {
-                                fields.push(currentField.trim());
-                            }
-                            currentField = '';
-                            continue;
-                        }
-                    }
-
-                    currentField += char;
-                }
-
-                // Agregar el último campo
-                if (currentField.trim()) {
-                    fields.push(currentField.trim());
-                }
-
-                return fields;
-            }
-
-            formatFields(fields, maxChars) {
-                let lines = [];
-                let currentLine = '';
-                let indent = ' '.repeat(this.indentSize);
-
-                for (let i = 0; i < fields.length; i++) {
-                    let field = fields[i];
-                    let isLast = i === fields.length - 1;
-                    let fieldWithComma = isLast ? field : field + ',';
-
-                    // Verificar si el campo cabe en la línea actual
-                    let testLine = currentLine ? currentLine + ' ' + fieldWithComma : indent + fieldWithComma;
-
-                    if (testLine.length <= maxChars) {
-                        currentLine = testLine;
-                    } else {
-                        // La línea actual está llena, guardarla y empezar nueva
-                        if (currentLine) {
-                            lines.push(currentLine);
-                        }
-                        currentLine = indent + fieldWithComma;
-                    }
-
-                    // Si es el último campo, agregar la línea final
-                    if (isLast && currentLine) {
-                        lines.push(currentLine);
-                    }
-                }
-
-                return lines.join('\n');
-            }
-
-            calculateStats(blocks, formattedQuery, maxChars) {
-                let totalFields = 0;
-                for (let block of blocks) {
-                    totalFields += this.extractFields(block.content).length;
-                }
-
-                let originalLines = blocks.reduce((acc, block) => {
-                    return acc + this.extractFields(block.content).length;
-                }, 0);
-
-                let formattedLines = formattedQuery.split('\n').length;
-                let reduction = originalLines > 0 ? Math.round(((originalLines - formattedLines) / originalLines) * 100) : 0;
-
-                return {
-                    fieldCount: totalFields,
-                    lineCount: formattedLines,
-                    charCount: formattedQuery.length,
-                    reductionPercent: Math.max(0, reduction),
-                    maxCharsUsed: maxChars
-                };
-            }
-
-            // Preparar datos para Excel con manejo de límites por celda
-            prepareForExcel(query) {
-                const result = this.formatSQL(query, true);
-                if (!result.success) return result;
-
-                const lines = result.query.split('\n');
-                const excelData = [];
-                
-                lines.forEach((line, index) => {
-                    if (line.trim()) {
-                        // Si la línea excede el límite de Excel, dividirla
-                        if (line.length > this.excelMaxChars) {
-                            const chunks = this.splitLineForExcel(line);
-                            chunks.forEach(chunk => {
-                                excelData.push([chunk]);
-                            });
-                        } else {
-                            excelData.push([line]);
-                        }
-                    }
-                });
-
-                return {
-                    success: true,
-                    data: excelData,
-                    stats: result.stats
-                };
-            }
-
-            splitLineForExcel(line) {
-                const chunks = [];
-                let currentChunk = '';
-                const words = line.split(' ');
-                
-                for (const word of words) {
-                    const testChunk = currentChunk ? currentChunk + ' ' + word : word;
-                    
-                    if (testChunk.length <= this.excelMaxChars) {
-                        currentChunk = testChunk;
-                    } else {
-                        if (currentChunk) {
-                            chunks.push(currentChunk);
-                        }
-                        currentChunk = word;
-                    }
-                }
-                
-                if (currentChunk) {
-                    chunks.push(currentChunk);
-                }
-                
-                return chunks;
-            }
-        }
-
-        const formatter = new SQLFormatter();
+        // Inicializar formateador mejorado
+        const formatter = new SQLFormatter({
+            maxCharsPerLine: 32000,
+            excelMaxChars: 32767,
+            indentSize: 4,
+            preserveFormatting: true,
+            addBlankLines: true
+        });
+        
         let currentFile = null;
         let formattedResult = null;
+        let diagnosticInfo = null;
+        
+        // Obtener información de diagnóstico si está habilitada
+        if (appConfig.enableDiagnostics) {
+            diagnosticInfo = formatter.getDiagnosticInfo();
+            console.log('SQL Formatter v' + diagnosticInfo.version + ' inicializado');
+            console.log('Módulos cargados:', diagnosticInfo.modules);
+        }
 
         // Inicialización
         document.addEventListener('DOMContentLoaded', function() {
@@ -938,25 +703,60 @@ GROUP BY campo1, campo2"></textarea>
                 return;
             }
 
-            // Actualizar configuración
-            formatter.maxCharsPerLine = maxChars;
-            formatter.excelMaxChars = excelMaxChars;
-            formatter.indentSize = indentSize;
+            // Validar consulta antes de formatear
+            const validation = formatter.validateQuery(inputQuery);
+            if (!validation.isValid) {
+                showMessage('Error en la consulta: ' + validation.errors.join(', '), 'warning');
+                return;
+            }
 
-            // Formatear la consulta
-            const result = formatter.formatSQL(inputQuery);
+            // Mostrar advertencias si las hay
+            if (validation.warnings.length > 0) {
+                console.warn('Advertencias:', validation.warnings);
+            }
+
+            // Actualizar configuración del formateador
+            formatter.updateSettings({
+                maxCharsPerLine: maxChars,
+                excelMaxChars: excelMaxChars,
+                indentSize: indentSize
+            });
+
+            // Formatear la consulta (con optimización si está habilitada)
+            let result;
+            if (appConfig.enableOptimization) {
+                result = formatter.optimizeFormatting(inputQuery, 80);
+            } else {
+                result = formatter.formatSQL(inputQuery);
+            }
 
             if (result.success) {
                 formattedResult = result;
                 document.getElementById('outputQuery').value = result.query;
-                updateStats(result.stats);
-                showMessage('¡Consulta formateada exitosamente!', 'success');
+                updateStatsAdvanced(result.stats);
+                
+                let successMsg = '¡Consulta formateada exitosamente!';
+                if (result.optimizationConfig) {
+                    successMsg += ` (Optimizada con ${result.optimizationConfig.maxCharsPerLine} chars/línea)`;
+                }
+                
+                showMessage(successMsg, 'success');
                 document.getElementById('exportButtons').style.display = 'flex';
+                
+                // Logging para diagnóstico
+                if (appConfig.enableDiagnostics) {
+                    console.log('Resultado del formateo:', result);
+                }
+                
             } else {
                 showMessage('Error al formatear: ' + result.error, 'warning');
                 document.getElementById('outputQuery').value = '';
                 hideStats();
                 document.getElementById('exportButtons').style.display = 'none';
+                
+                if (appConfig.enableDiagnostics && result.details) {
+                    console.error('Detalles del error:', result.details);
+                }
             }
         }
 
@@ -989,6 +789,33 @@ GROUP BY campo1, campo2"></textarea>
             document.getElementById('lineCount').textContent = stats.lineCount;
             document.getElementById('charCount').textContent = stats.charCount.toLocaleString();
             document.getElementById('reductionPercent').textContent = stats.reductionPercent + '%';
+            document.getElementById('stats').style.display = 'grid';
+        }
+        
+        // Función mejorada para mostrar estadísticas avanzadas
+        function updateStatsAdvanced(stats) {
+            // Estadísticas básicas (compatibilidad con la UI existente)
+            document.getElementById('fieldCount').textContent = stats.fieldCount || 0;
+            document.getElementById('lineCount').textContent = stats.lineCount || 0;
+            document.getElementById('charCount').textContent = (stats.charCount || 0).toLocaleString();
+            document.getElementById('reductionPercent').textContent = (stats.reductionPercent || 0) + '%';
+            
+            // Mostrar información adicional en consola si está habilitado el diagnóstico
+            if (appConfig.enableDiagnostics) {
+                console.group('📊 Estadísticas Detalladas');
+                console.log('📝 Cláusulas encontradas:', stats.clauseCount || 0);
+                console.log('🔍 Tiene subconsultas:', stats.hasSubqueries || false);
+                console.log('📏 Promedio caracteres por línea:', stats.averageLineLength || 0);
+                console.log('⚙️ Configuración usada:', {
+                    maxChars: stats.maxCharsUsed,
+                    optimizadoParaExcel: stats.isExcelOptimized
+                });
+                if (stats.clauseBreakdown) {
+                    console.log('📋 Desglose por cláusulas:', stats.clauseBreakdown);
+                }
+                console.groupEnd();
+            }
+            
             document.getElementById('stats').style.display = 'grid';
         }
 

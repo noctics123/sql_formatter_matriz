@@ -32,7 +32,7 @@ class SQLFormatter {
     }
 
     /**
-     * Formatea una consulta SQL completa
+     * Formatea una consulta SQL completa - SOLO FORMATEAR CAMPOS, preservar esqueleto
      */
     formatSQL(query, isForExcel = false) {
         try {
@@ -46,39 +46,16 @@ class SQLFormatter {
                 throw new Error('La consulta no puede estar vacía');
             }
 
-            // Parsear la consulta
-            const parseResult = this.parser.parseQuery(trimmedQuery);
-            
-            if (!parseResult.clauses || parseResult.clauses.length === 0) {
-                throw new Error('No se pudieron identificar cláusulas SQL válidas');
-            }
+            // NUEVO ENFOQUE: Solo formatear campos en SELECT, preservar todo lo demás
+            const formattedQuery = this.formatOnlySelectFields(trimmedQuery, isForExcel);
 
-            // Validar estructura de cláusulas
-            const validation = this.queryBuilder.validateClauses(parseResult.clauses);
-            if (!validation.isValid) {
-                console.warn('Advertencias de estructura:', validation.errors);
-                // Continuar pero registrar advertencias
-            }
-
-            // Formatear campos en cláusulas que los contengan
-            const formattedFields = this.formatClauseFields(parseResult.clauses, isForExcel);
-
-            // Construir la consulta final
-            const formattedQuery = this.queryBuilder.buildQuery(parseResult.clauses, formattedFields);
-
-            // Calcular estadísticas
-            const stats = this.calculateComprehensiveStats(
-                parseResult, 
-                formattedQuery, 
-                formattedFields,
-                isForExcel
-            );
+            // Calcular estadísticas básicas
+            const stats = this.calculateBasicStats(trimmedQuery, formattedQuery, isForExcel);
 
             return {
                 success: true,
                 query: formattedQuery,
-                stats: stats,
-                parseResult: parseResult // Para debugging
+                stats: stats
             };
 
         } catch (error) {
@@ -88,6 +65,168 @@ class SQLFormatter {
                 details: error.stack // Para debugging en desarrollo
             };
         }
+    }
+
+    /**
+     * Formatea SOLO los campos dentro de SELECT, preservando el resto de la estructura
+     */
+    formatOnlySelectFields(query, isForExcel = false) {
+        let formattedQuery = query;
+        
+        // Buscar todos los bloques SELECT y reemplazar solo sus campos
+        const selectBlocks = this.findSelectFieldBlocks(query);
+        
+        // Procesar cada bloque de campos de SELECT
+        for (const block of selectBlocks) {
+            const fields = this.parser.extractFields(block.fieldsContent);
+            
+            // Determinar si necesita formateo
+            if (this.shouldFormatFields(fields, block.fieldsContent)) {
+                const formattedFields = this.fieldFormatter.formatFields(fields, isForExcel);
+                
+                // Construir el reemplazo apropiado según el tipo de bloque
+                let newSelectBlock;
+                if (block.type === 'subquery') {
+                    // Para subconsultas, mantener el paréntesis
+                    newSelectBlock = '(\n  SELECT\n' + this.addExtraIndent(formattedFields, '  ');
+                } else {
+                    // Para SELECT principales
+                    newSelectBlock = 'SELECT\n' + formattedFields;
+                }
+                
+                formattedQuery = formattedQuery.replace(block.fullMatch, newSelectBlock);
+            }
+        }
+        
+        return formattedQuery;
+    }
+
+    /**
+     * Encuentra bloques de campos en SELECT sin alterar el resto de la estructura
+     * Mejorado para manejar MINUS, UNION ALL y subconsultas anidadas
+     */
+    findSelectFieldBlocks(query) {
+        const blocks = [];
+        
+        // Regex principal para capturar SELECT hasta la siguiente palabra clave
+        // Maneja: SELECT ... FROM, SELECT ... UNION, SELECT ... MINUS, SELECT ... )
+        const mainRegex = /SELECT\s+((?:(?!SELECT|FROM|UNION|MINUS|WHERE|GROUP|ORDER|HAVING|LIMIT)\S|\s)*?)(?=\s+(?:FROM|UNION|MINUS|\)|WHERE|GROUP|ORDER|HAVING|LIMIT|$))/gi;
+        let match;
+
+        while ((match = mainRegex.exec(query)) !== null) {
+            const fieldsContent = match[1].trim();
+            
+            // Verificar que tiene contenido válido y no es solo espacios o comentarios
+            if (fieldsContent && this.isValidFieldContent(fieldsContent)) {
+                blocks.push({
+                    fullMatch: match[0],
+                    fieldsContent: fieldsContent,
+                    startIndex: match.index,
+                    endIndex: match.index + match[0].length,
+                    type: 'main'
+                });
+            }
+        }
+
+        // Buscar SELECT dentro de paréntesis (subconsultas)
+        const subqueryRegex = /\(\s*SELECT\s+((?:(?!SELECT|FROM|\)).)*?)(?=\s+FROM|\))/gi;
+        while ((match = subqueryRegex.exec(query)) !== null) {
+            const fieldsContent = match[1].trim();
+            
+            if (fieldsContent && this.isValidFieldContent(fieldsContent)) {
+                // Encontrar el SELECT completo incluyendo el paréntesis
+                const fullSelectMatch = query.substring(match.index).match(/\(\s*SELECT\s+[^)]*FROM/i);
+                if (fullSelectMatch) {
+                    blocks.push({
+                        fullMatch: fullSelectMatch[0],
+                        fieldsContent: fieldsContent,
+                        startIndex: match.index,
+                        type: 'subquery'
+                    });
+                }
+            }
+        }
+
+        // Ordenar bloques por posición para procesarlos correctamente
+        return blocks.sort((a, b) => a.startIndex - b.startIndex);
+    }
+
+    /**
+     * Valida que el contenido sea realmente campos y no otra cosa
+     */
+    isValidFieldContent(content) {
+        const upper = content.toUpperCase().trim();
+        
+        // No debe ser solo asterisco
+        if (upper === '*') return false;
+        
+        // No debe contener palabras clave principales sueltas
+        const invalidKeywords = ['FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'UNION', 'MINUS'];
+        for (const keyword of invalidKeywords) {
+            if (upper === keyword || upper.startsWith(keyword + ' ')) {
+                return false;
+            }
+        }
+        
+        // Debe tener algo parecido a campos (nombres, comas, funciones)
+        return /[a-zA-Z_]/.test(content) && (content.includes(',') || content.includes('(') || content.split('\n').length > 1);
+    }
+
+    /**
+     * Determina si un bloque de campos necesita formateo horizontal
+     */
+    shouldFormatFields(fields, originalContent) {
+        // Si tiene pocos campos simples, no formatear
+        if (fields.length <= 4 && originalContent.length < 200) {
+            return false;
+        }
+        
+        // Si los campos ya están en una línea y caben bien, no formatear
+        if (originalContent.split('\n').length <= 2 && originalContent.length < 500) {
+            return false;
+        }
+        
+        // Si tiene muchos campos o es muy largo, sí formatear
+        return fields.length > 4 || originalContent.length > 300;
+    }
+
+    /**
+     * Agrega indentación extra a un texto formateado
+     */
+    addExtraIndent(text, extraIndent) {
+        return text.split('\n').map(line => {
+            if (line.trim()) {
+                return extraIndent + line;
+            }
+            return line;
+        }).join('\n');
+    }
+
+    /**
+     * Calcular estadísticas básicas para el nuevo enfoque
+     */
+    calculateBasicStats(originalQuery, formattedQuery, isForExcel) {
+        const originalLines = originalQuery.split('\n').length;
+        const formattedLines = formattedQuery.split('\n').length;
+        
+        // Contar campos aproximadamente
+        const fieldCount = (formattedQuery.match(/\w+\s*\(/g) || []).length + 
+                          (formattedQuery.match(/,\s*\w+/g) || []).length;
+        
+        const reduction = originalLines > 0 
+            ? Math.round(((originalLines - formattedLines) / originalLines) * 100) 
+            : 0;
+
+        return {
+            fieldCount: fieldCount,
+            lineCount: formattedLines,
+            charCount: formattedQuery.length,
+            reductionPercent: Math.max(0, reduction),
+            originalLines: originalLines,
+            maxCharsUsed: isForExcel ? this.excelMaxChars : this.maxCharsPerLine,
+            isExcelOptimized: isForExcel,
+            compressionRatio: originalLines > 0 ? Math.round((formattedLines / originalLines) * 100) : 100
+        };
     }
 
     /**

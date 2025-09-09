@@ -1,9 +1,11 @@
 class FieldFormatter {
     constructor(options = {}) {
-        this.maxCharsPerLine = options.maxCharsPerLine || 32000;
-        this.excelMaxChars = options.excelMaxChars || 32767;
+        this.maxCharsPerLine = options.maxCharsPerLine || 30000; // Reducir un poco para margen
+        this.excelMaxChars = options.excelMaxChars || 32500; // Dejar margen de seguridad para Excel
         this.indentSize = options.indentSize || 4;
         this.preserveCommaPosition = options.preserveCommaPosition !== false; // Por defecto true
+        this.fieldSeparator = options.fieldSeparator || '    '; // 4 espacios por defecto
+        this.aggressivePacking = options.aggressivePacking !== false; // Empaquetado agresivo por defecto
     }
 
     /**
@@ -33,7 +35,11 @@ class FieldFormatter {
         const maxChars = isForExcel ? this.excelMaxChars : this.maxCharsPerLine;
         const indent = ' '.repeat(this.indentSize);
         
-        return this.arrangeFieldsHorizontally(validFields, maxChars, indent);
+        if (this.aggressivePacking) {
+            return this.arrangeFieldsAggressively(validFields, maxChars, indent);
+        } else {
+            return this.arrangeFieldsHorizontally(validFields, maxChars, indent);
+        }
     }
 
     /**
@@ -149,10 +155,17 @@ class FieldFormatter {
 
     /**
      * Organiza los campos horizontalmente respetando el límite de caracteres
+     * Versión optimizada para maximizar campos por línea
      */
     arrangeFieldsHorizontally(fields, maxChars, indent) {
+        if (fields.length === 0) return '';
+        
         const lines = [];
         let currentLine = '';
+        let currentLineFieldCount = 0;
+        
+        // Reservar espacio para indentación
+        const availableChars = maxChars - indent.length;
 
         for (let i = 0; i < fields.length; i++) {
             const field = fields[i].trim();
@@ -161,27 +174,92 @@ class FieldFormatter {
             // Determinar si agregar coma
             const fieldWithComma = this.shouldAddComma(field, isLast) ? field + ',' : field;
             
-            // Calcular la línea de prueba
-            const testLine = currentLine 
-                ? currentLine + ' ' + fieldWithComma 
-                : indent + fieldWithComma;
-
-            // Verificar si la línea cabe
-            if (testLine.length <= maxChars) {
-                currentLine = testLine;
+            // Calcular longitud si agregamos este campo
+            let testLineLength;
+            if (currentLine === '') {
+                // Primera campo de la línea
+                testLineLength = fieldWithComma.length;
             } else {
-                // La línea actual está llena, guardarla y empezar nueva
-                if (currentLine) {
-                    // Verificar si necesitamos terminar en coma
-                    currentLine = this.ensureCommaEnding(currentLine, !isLast);
-                    lines.push(currentLine);
+                // Agregar separador + campo
+                testLineLength = currentLine.length + this.fieldSeparator.length + fieldWithComma.length;
+            }
+
+            // Verificar si cabe en la línea actual
+            if (testLineLength <= availableChars) {
+                // Cabe, agregarlo
+                if (currentLine === '') {
+                    currentLine = fieldWithComma;
+                } else {
+                    currentLine += this.fieldSeparator + fieldWithComma;
                 }
-                currentLine = indent + fieldWithComma;
+                currentLineFieldCount++;
+            } else {
+                // No cabe, finalizar línea actual e iniciar nueva
+                if (currentLine !== '') {
+                    // Asegurar que termina en coma si no es la última línea
+                    currentLine = this.ensureCommaEnding(currentLine, !isLast);
+                    lines.push(indent + currentLine);
+                }
+                
+                // Iniciar nueva línea con el campo actual
+                currentLine = fieldWithComma;
+                currentLineFieldCount = 1;
             }
 
             // Si es el último campo, agregar la línea final
-            if (isLast && currentLine) {
-                lines.push(currentLine);
+            if (isLast && currentLine !== '') {
+                lines.push(indent + currentLine);
+            }
+        }
+
+        return lines.join('\n');
+    }
+
+    /**
+     * Método de empaquetado agresivo para maximizar campos por línea
+     * Similar a tu resultado esperado con múltiples campos por línea
+     */
+    arrangeFieldsAggressively(fields, maxChars, indent) {
+        if (fields.length === 0) return '';
+        
+        const lines = [];
+        let currentLine = '';
+        const availableChars = maxChars - indent.length;
+        
+        // Usar separador mínimo para maximizar espacio
+        const minSeparator = '    '; // 4 espacios como en tu ejemplo
+        
+        for (let i = 0; i < fields.length; i++) {
+            const field = fields[i].trim();
+            const isLast = i === fields.length - 1;
+            
+            // Determinar si agregar coma
+            const fieldWithComma = this.shouldAddComma(field, isLast) ? field + ',' : field;
+            
+            // Calcular si cabe en la línea actual
+            let proposedLine;
+            if (currentLine === '') {
+                proposedLine = fieldWithComma;
+            } else {
+                proposedLine = currentLine + minSeparator + fieldWithComma;
+            }
+
+            // Si cabe, agregarlo; si no, crear nueva línea
+            if (proposedLine.length <= availableChars) {
+                currentLine = proposedLine;
+            } else {
+                // Línea llena, guardarla e iniciar nueva
+                if (currentLine !== '') {
+                    // Asegurar terminación en coma si no es la última línea
+                    currentLine = this.ensureCommaEnding(currentLine, !isLast);
+                    lines.push(indent + currentLine);
+                }
+                currentLine = fieldWithComma;
+            }
+
+            // Si es el último campo, agregar la línea final
+            if (isLast && currentLine !== '') {
+                lines.push(indent + currentLine);
             }
         }
 
